@@ -63,5 +63,6 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<FeedHub>("/hubs/feed");
+app.MapHub<ChatHub>("/hubs/chat");
 
 app.Run();

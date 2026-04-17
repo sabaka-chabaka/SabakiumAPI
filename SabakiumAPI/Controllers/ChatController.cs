@@ -13,35 +13,38 @@ public class ChatController(AppDbContext db) : ControllerBase
 {
     private int Me => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
-    [HttpGet("history/{othetUserId:int}")]
+    [HttpGet("history/{otherUserId:int}")]
     public async Task<IActionResult> History(int otherUserId, int? before, int limit = 50)
     {
         var me = Me;
-        
+
         var q = db.ChatMessages
+            .Include(m => m.Sender)
+            .Include(m => m.Recipient)
             .Where(m =>
                 (m.SenderId == me && m.RecipientId == otherUserId) ||
-                (m.SenderId == otherUserId && m.RecipientId == me))
-            .OrderByDescending(m => m.Id);
- 
+                (m.SenderId == otherUserId && m.RecipientId == me));
+
         if (before.HasValue)
-            q = (IOrderedQueryable<Models.ChatMessage>)q.Where(m => m.Id < before.Value);
- 
-        var msgs = await q.Take(limit)
+            q = q.Where(m => m.Id < before.Value);
+
+        var msgs = await q
+            .OrderByDescending(m => m.Id)
+            .Take(limit)
             .Select(m => new
             {
-                m.Id,
-                m.SenderId,
-                SenderUsername   = m.Sender.Username,
-                SenderDisplayName= m.Sender.DisplayName,
-                m.RecipientId,
-                m.Ciphertext,
-                m.Iv,
-                m.AuthTag,
-                m.CreatedAt
+                id                = m.Id,
+                senderId          = m.SenderId,
+                senderUsername    = m.Sender.Username,
+                senderDisplayName = m.Sender.DisplayName,
+                recipientId       = m.RecipientId,
+                ciphertext        = m.Ciphertext,
+                iv                = m.Iv,
+                authTag           = m.AuthTag,
+                createdAt         = m.CreatedAt,
             })
             .ToListAsync();
- 
+
         return Ok(msgs);
     }
 
@@ -52,54 +55,58 @@ public class ChatController(AppDbContext db) : ControllerBase
         var query = db.Users.Where(u => u.Id != me);
         if (!string.IsNullOrWhiteSpace(q))
             query = query.Where(u => u.Username.StartsWith(q) || u.DisplayName.Contains(q));
-        
-        var users = await query.OrderBy(u => u.Username).Take(30).Select(u => new { u.Id, u.Username, u.DisplayName }).ToListAsync();
-        
+
+        var users = await query
+            .OrderBy(u => u.Username)
+            .Take(30)
+            .Select(u => new { id = u.Id, username = u.Username, displayName = u.DisplayName })
+            .ToListAsync();
+
         return Ok(users);
     }
-    
+
     [HttpGet("conversations")]
     public async Task<IActionResult> Conversations()
     {
         var me = Me;
- 
+
         var partnerIds = await db.ChatMessages
             .Where(m => m.SenderId == me || m.RecipientId == me)
             .Select(m => m.SenderId == me ? m.RecipientId : m.SenderId)
             .Distinct()
             .ToListAsync();
- 
+
         var convs = new List<object>();
         foreach (var pid in partnerIds)
         {
             var latest = await db.ChatMessages
+                .Include(m => m.Sender)
+                .Include(m => m.Recipient)
                 .Where(m =>
                     (m.SenderId == me && m.RecipientId == pid) ||
                     (m.SenderId == pid && m.RecipientId == me))
                 .OrderByDescending(m => m.Id)
-                .Include(m => m.Sender)
-                .Include(m => m.Recipient)
                 .FirstOrDefaultAsync();
- 
+
             if (latest == null) continue;
- 
+
             var partner = await db.Users.FindAsync(pid);
             if (partner == null) continue;
- 
+
             convs.Add(new
             {
-                PartnerId          = partner.Id,
-                PartnerUsername    = partner.Username,
-                PartnerDisplayName = partner.DisplayName,
-                LatestMessageId    = latest.Id,
-                LatestCiphertext   = latest.Ciphertext,
-                LatestIv           = latest.Iv,
-                LatestAuthTag      = latest.AuthTag,
-                LatestSenderId     = latest.SenderId,
-                LatestCreatedAt    = latest.CreatedAt,
+                partnerId          = partner.Id,
+                partnerUsername    = partner.Username,
+                partnerDisplayName = partner.DisplayName,
+                latestMessageId    = latest.Id,
+                latestCiphertext   = latest.Ciphertext,
+                latestIv           = latest.Iv,
+                latestAuthTag      = latest.AuthTag,
+                latestSenderId     = latest.SenderId,
+                latestCreatedAt    = latest.CreatedAt,
             });
         }
- 
-        return Ok(convs.OrderByDescending(c => ((dynamic)c).LatestMessageId));
+
+        return Ok(convs.OrderByDescending(c => ((dynamic)c).latestMessageId));
     }
 }

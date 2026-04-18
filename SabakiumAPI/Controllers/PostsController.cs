@@ -177,17 +177,25 @@ public class PostsController(AppDbContext db, IHubContext<FeedHub> hub) : Contro
         var exists = await db.Posts.AnyAsync(p => p.Id == id);
         if (!exists) return NotFound();
 
-        var comments = await db.Comments
+        var rows = await db.Comments
             .Include(c => c.User)
             .Where(c => c.PostId == id)
             .OrderBy(c => c.Id)
-            .Select(c => new CommentDto(
+            .Select(c => new {
                 c.Id, c.Content, c.CreatedAt,
-                c.UserId, c.User.Username, c.User.DisplayName,
-                GetFileUrl(c.User.AvatarPath)))
+                c.UserId,
+                c.User.Username,
+                c.User.DisplayName,
+                c.User.AvatarPath
+            })
             .ToListAsync();
 
-        return Ok(comments);
+        var dtos = rows.Select(c => new CommentDto(
+            c.Id, c.Content, c.CreatedAt,
+            c.UserId, c.Username, c.DisplayName,
+            GetFileUrl(c.AvatarPath)));
+
+        return Ok(dtos);
     }
     
     [HttpPost("{id}/comments")]

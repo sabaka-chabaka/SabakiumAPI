@@ -53,6 +53,34 @@ namespace SabakiumAPI.Migrations
                     b.ToTable("ChatMessages");
                 });
 
+            modelBuilder.Entity("SabakiumAPI.Models.Comment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PostId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PostId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Comments");
+                });
+
             modelBuilder.Entity("SabakiumAPI.Models.Post", b =>
                 {
                     b.Property<int>("Id")
@@ -145,6 +173,25 @@ namespace SabakiumAPI.Migrations
                     b.Navigation("Sender");
                 });
 
+            modelBuilder.Entity("SabakiumAPI.Models.Comment", b =>
+                {
+                    b.HasOne("SabakiumAPI.Models.Post", "Post")
+                        .WithMany("Comments")
+                        .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SabakiumAPI.Models.User", "User")
+                        .WithMany("Comments")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Post");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("SabakiumAPI.Models.Post", b =>
                 {
                     b.HasOne("SabakiumAPI.Models.User", "User")
@@ -177,11 +224,15 @@ namespace SabakiumAPI.Migrations
 
             modelBuilder.Entity("SabakiumAPI.Models.Post", b =>
                 {
+                    b.Navigation("Comments");
+
                     b.Navigation("Likes");
                 });
 
             modelBuilder.Entity("SabakiumAPI.Models.User", b =>
                 {
+                    b.Navigation("Comments");
+
                     b.Navigation("PostLikes");
 
                     b.Navigation("Posts");

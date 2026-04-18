@@ -9,4 +9,5 @@ public class User
     public string? AvatarPath { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public ICollection<Post> Posts { get; set; } = [];
+    public ICollection<PostLike> PostLikes { get; set; } = [];
 }

@@ -152,4 +152,19 @@ public class ChatController(AppDbContext db, IHttpContextAccessor http) : Contro
             mimeType = file.ContentType
         });
     }
+
+    [HttpDelete("messages/{id}")]
+    [Authorize]
+    public async Task<IActionResult> DeleteMessage(int id)
+    {
+        var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var msg = await db.ChatMessages.FindAsync(id);
+
+        if (msg is null) return NotFound();
+        if (msg.SenderId != userId) return Forbid();
+        
+        db.ChatMessages.Remove(msg);
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
 }

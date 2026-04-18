@@ -13,8 +13,15 @@ namespace SabakiumAPI.Controllers;
 [Route("api/[controller]")]
 public class PostsController(AppDbContext db, IHubContext<FeedHub> hub) : ControllerBase
 {
-    public record PostDto(int Id, string Content, DateTime CreatedAt, int UserId, string Username, string DisplayName);
+    public record PostDto(int Id, string Content, DateTime CreatedAt, int UserId, string Username, string DisplayName, string? AvatarUrl);
     public record CreatePostRequest(string Content);
+
+    private string? GetAvatarUrl(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return null;
+        var req = HttpContext.Request;
+        return $"{req.Scheme}://{req.Host}{path}";
+    }
 
     private int CurrentUserId =>
         int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
@@ -34,10 +41,12 @@ public class PostsController(AppDbContext db, IHubContext<FeedHub> hub) : Contro
 
         var posts = await query
             .Take(limit)
-            .Select(p => new PostDto(p.Id, p.Content, p.CreatedAt, p.UserId, p.User.Username, p.User.DisplayName))
+            .Select(p => new PostDto(p.Id, p.Content, p.CreatedAt, p.UserId, p.User.Username, p.User.DisplayName, p.User.AvatarPath))
             .ToListAsync();
 
-        return Ok(posts);
+        var dtos = posts.Select(p => p with { AvatarUrl = GetAvatarUrl(p.AvatarUrl) });
+
+        return Ok(dtos);
     }
 
     [HttpPost]
@@ -59,7 +68,7 @@ public class PostsController(AppDbContext db, IHubContext<FeedHub> hub) : Contro
         await db.Entry(post).Reference(p => p.User).LoadAsync();
 
         var dto = new PostDto(post.Id, post.Content, post.CreatedAt,
-            post.UserId, post.User.Username, post.User.DisplayName);
+            post.UserId, post.User.Username, post.User.DisplayName, GetAvatarUrl(post.User.AvatarPath));
 
         await hub.Clients.All.SendAsync("NewPost", dto);
 

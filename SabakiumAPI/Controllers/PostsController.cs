@@ -17,7 +17,8 @@ public class PostsController(AppDbContext db, IHubContext<FeedHub> hub) : Contro
         int Id, string Content, DateTime CreatedAt,
         int UserId, string Username, string DisplayName,
         string? AvatarUrl, string? ImageUrl,
-        int LikesCount, bool LikedByMe);
+        int LikesCount, bool LikedByMe,
+        int CommentsCount);
 
     public record CreatePostRequest(string Content);
 
@@ -46,6 +47,7 @@ public class PostsController(AppDbContext db, IHubContext<FeedHub> hub) : Contro
         var query = db.Posts
             .Include(p => p.User)
             .Include(p => p.Likes)
+            .Include(p => p.Comments)
             .OrderByDescending(p => p.Id)
             .AsQueryable();
 
@@ -59,7 +61,8 @@ public class PostsController(AppDbContext db, IHubContext<FeedHub> hub) : Contro
             p.UserId, p.User.Username, p.User.DisplayName,
             GetFileUrl(p.User.AvatarPath), GetFileUrl(p.ImagePath),
             p.Likes.Count,
-            meId.HasValue && p.Likes.Any(l => l.UserId == meId.Value)
+            meId.HasValue && p.Likes.Any(l => l.UserId == meId.Value),
+            p.Comments.Count
         ));
 
         return Ok(dtos);
@@ -105,7 +108,7 @@ public class PostsController(AppDbContext db, IHubContext<FeedHub> hub) : Contro
             post.Id, post.Content, post.CreatedAt,
             post.UserId, post.User.Username, post.User.DisplayName,
             GetFileUrl(post.User.AvatarPath), GetFileUrl(post.ImagePath),
-            0, false);
+            0, false, 0);
 
         await hub.Clients.All.SendAsync("NewPost", dto);
         return Ok(dto);
@@ -158,6 +161,77 @@ public class PostsController(AppDbContext db, IHubContext<FeedHub> hub) : Contro
         await db.SaveChangesAsync();
 
         await hub.Clients.All.SendAsync("DeletePost", id);
+        return NoContent();
+    }
+    
+    public record CommentDto(
+        int Id, string Content, DateTime CreatedAt,
+        int UserId, string Username, string DisplayName,
+        string? AvatarUrl);
+
+    public record CreateCommentRequest(string Content);
+    
+    [HttpGet("{id}/comments")]
+    public async Task<IActionResult> GetComments(int id)
+    {
+        var exists = await db.Posts.AnyAsync(p => p.Id == id);
+        if (!exists) return NotFound();
+
+        var comments = await db.Comments
+            .Include(c => c.User)
+            .Where(c => c.PostId == id)
+            .OrderBy(c => c.Id)
+            .Select(c => new CommentDto(
+                c.Id, c.Content, c.CreatedAt,
+                c.UserId, c.User.Username, c.User.DisplayName,
+                GetFileUrl(c.User.AvatarPath)))
+            .ToListAsync();
+
+        return Ok(comments);
+    }
+    
+    [HttpPost("{id}/comments")]
+    [Authorize]
+    public async Task<IActionResult> CreateComment(int id, CreateCommentRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Content) || req.Content.Length > 1000)
+            return BadRequest(new { error = "Комментарий не может быть пустым или длиннее 1000 символов" });
+
+        var post = await db.Posts.FindAsync(id);
+        if (post is null) return NotFound();
+
+        var comment = new Comment
+        {
+            Content = req.Content.Trim(),
+            PostId = id,
+            UserId = CurrentUserId
+        };
+
+        db.Comments.Add(comment);
+        await db.SaveChangesAsync();
+        await db.Entry(comment).Reference(c => c.User).LoadAsync();
+
+        var dto = new CommentDto(
+            comment.Id, comment.Content, comment.CreatedAt,
+            comment.UserId, comment.User.Username, comment.User.DisplayName,
+            GetFileUrl(comment.User.AvatarPath));
+
+        await hub.Clients.All.SendAsync("NewComment", new { postId = id, comment = dto });
+
+        return Ok(dto);
+    }
+
+    [HttpDelete("{id}/comments/{commentId}")]
+    [Authorize]
+    public async Task<IActionResult> DeleteComment(int id, int commentId)
+    {
+        var comment = await db.Comments.FindAsync(commentId);
+        if (comment is null) return NotFound();
+        if (comment.PostId != id) return BadRequest();
+        if (comment.UserId != CurrentUserId) return Forbid();
+
+        db.Comments.Remove(comment);
+        await db.SaveChangesAsync();
         return NoContent();
     }
 }

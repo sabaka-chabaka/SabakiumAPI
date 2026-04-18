@@ -67,6 +67,7 @@ public class ChatHub(AppDbContext db) : Hub
     {
         var userId = int.Parse(Context.User!.FindFirstValue(ClaimTypes.NameIdentifier)!);
         UserConnections.Add(userId, Context.ConnectionId);
+        await Clients.Others.SendAsync("UserOnline", userId);
         await base.OnConnectedAsync();
     }
 
@@ -74,7 +75,16 @@ public class ChatHub(AppDbContext db) : Hub
     {
         var userId = int.Parse(Context.User!.FindFirstValue(ClaimTypes.NameIdentifier)!);
         UserConnections.Remove(userId);
+        await Clients.Others.SendAsync("UserOffline", userId);
         await base.OnDisconnectedAsync(exception);
+    }
+    
+    public async Task SetTyping(int recipientId, bool isTyping)
+    {
+        var senderId = int.Parse(Context.User!.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var recipientConnId = UserConnections.Get(recipientId);
+        if (recipientConnId != null)
+            await Clients.Client(recipientConnId).SendAsync("UserTyping", senderId, isTyping);
     }
 }
 

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SabakiumAPI.Data;
+using SabakiumAPI.Hubs;
 
 namespace SabakiumAPI.Controllers;
 
@@ -114,5 +115,41 @@ public class ChatController(AppDbContext db, IHttpContextAccessor http) : Contro
         }
 
         return Ok(convs.OrderByDescending(c => ((dynamic)c).latestMessageId));
+    }
+
+    [HttpGet("online/{userId}")]
+    [Authorize]
+    public IActionResult CheckOnline(int userId)
+    {
+        var online = UserConnections.Get(userId) != null;
+        return Ok(new { online });
+    }
+
+    [HttpPost("upload")]
+    [Authorize]
+    public async Task<IActionResult> UploadFile(IFormFile file)
+    {
+        if (file.Length > 50 * 1024 * 1024) return BadRequest(new { error = "Файл не должен превышать 50 МиБ" });
+        
+        var uploadsDir = Path.Combine("wwwroot", "uploads", "chat");
+        Directory.CreateDirectory(uploadsDir);
+
+        var ext = Path.GetExtension(file.FileName);
+        var safeFileName = $"{Guid.NewGuid()}{ext}";
+        var filePath = Path.Combine(uploadsDir, safeFileName);
+        
+        await using var stream = System.IO.File.Create(filePath);
+        await file.CopyToAsync(stream);
+
+        var req = HttpContext.Request;
+        var url = $"{req.Scheme}://{req.Host}/uploads/chat/{safeFileName}";
+
+        return Ok(new
+        {
+            url,
+            fileName = file.FileName,
+            fileSize = file.Length,
+            mimeType = file.ContentType
+        });
     }
 }

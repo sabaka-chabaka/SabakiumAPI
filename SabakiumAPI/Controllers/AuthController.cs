@@ -12,7 +12,14 @@ public class AuthController(AppDbContext db, AuthService auth) : ControllerBase
 {
     public record RegisterRequest(string Username, string DisplayName, string Password);
     public record LoginRequest(string Username, string Password);
-    public record AuthResponse(string Token, int UserId, string Username, string DisplayName);
+    public record AuthResponse(string Token, int UserId, string Username, string DisplayName, string? AvatarUrl);
+
+    private string? BuildAvatarUrl(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return null;
+        var req = HttpContext.Request;
+        return $"{req.Scheme}://{req.Host}{path}";
+    }
 
     [HttpPost("register")]
     public async Task<IActionResult> Register(RegisterRequest req)
@@ -25,25 +32,21 @@ public class AuthController(AppDbContext db, AuthService auth) : ControllerBase
 
         var user = new User
         {
-            Username = req.Username.Trim().ToLower(),
-            DisplayName = req.DisplayName.Trim(),
+            Username     = req.Username.Trim().ToLower(),
+            DisplayName  = req.DisplayName.Trim(),
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password)
         };
-
         db.Users.Add(user);
         await db.SaveChangesAsync();
-
-        return Ok(new AuthResponse(auth.GenerateToken(user), user.Id, user.Username, user.DisplayName));
+        return Ok(new AuthResponse(auth.GenerateToken(user), user.Id, user.Username, user.DisplayName, null));
     }
 
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginRequest req)
     {
         var user = await db.Users.FirstOrDefaultAsync(u => u.Username == req.Username.ToLower());
-
         if (user is null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
             return Unauthorized(new { error = "Неверное имя пользователя или пароль" });
-
-        return Ok(new AuthResponse(auth.GenerateToken(user), user.Id, user.Username, user.DisplayName));
+        return Ok(new AuthResponse(auth.GenerateToken(user), user.Id, user.Username, user.DisplayName, BuildAvatarUrl(user.AvatarPath)));
     }
 }

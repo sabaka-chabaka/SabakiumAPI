@@ -9,15 +9,21 @@ namespace SabakiumAPI.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class ChatController(AppDbContext db) : ControllerBase
+public class ChatController(AppDbContext db, IHttpContextAccessor http) : ControllerBase
 {
     private int Me => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+    private string? BuildAvatarUrl(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return null;
+        var req = http.HttpContext!.Request;
+        return $"{req.Scheme}://{req.Host}{path}";
+    }
 
     [HttpGet("history/{otherUserId:int}")]
     public async Task<IActionResult> History(int otherUserId, int? before, int limit = 50)
     {
         var me = Me;
-
         var q = db.ChatMessages
             .Include(m => m.Sender)
             .Include(m => m.Recipient)
@@ -31,21 +37,21 @@ public class ChatController(AppDbContext db) : ControllerBase
         var msgs = await q
             .OrderByDescending(m => m.Id)
             .Take(limit)
-            .Select(m => new
-            {
-                id                = m.Id,
-                senderId          = m.SenderId,
-                senderUsername    = m.Sender.Username,
-                senderDisplayName = m.Sender.DisplayName,
-                recipientId       = m.RecipientId,
-                ciphertext        = m.Ciphertext,
-                iv                = m.Iv,
-                authTag           = m.AuthTag,
-                createdAt         = m.CreatedAt,
-            })
             .ToListAsync();
 
-        return Ok(msgs);
+        return Ok(msgs.Select(m => new
+        {
+            id                = m.Id,
+            senderId          = m.SenderId,
+            senderUsername    = m.Sender.Username,
+            senderDisplayName = m.Sender.DisplayName,
+            senderAvatarUrl   = BuildAvatarUrl(m.Sender.AvatarPath),
+            recipientId       = m.RecipientId,
+            ciphertext        = m.Ciphertext,
+            iv                = m.Iv,
+            authTag           = m.AuthTag,
+            createdAt         = m.CreatedAt,
+        }));
     }
 
     [HttpGet("users")]
@@ -56,20 +62,20 @@ public class ChatController(AppDbContext db) : ControllerBase
         if (!string.IsNullOrWhiteSpace(q))
             query = query.Where(u => u.Username.StartsWith(q) || u.DisplayName.Contains(q));
 
-        var users = await query
-            .OrderBy(u => u.Username)
-            .Take(30)
-            .Select(u => new { id = u.Id, username = u.Username, displayName = u.DisplayName })
-            .ToListAsync();
-
-        return Ok(users);
+        var users = await query.OrderBy(u => u.Username).Take(30).ToListAsync();
+        return Ok(users.Select(u => new
+        {
+            id          = u.Id,
+            username    = u.Username,
+            displayName = u.DisplayName,
+            avatarUrl   = BuildAvatarUrl(u.AvatarPath),
+        }));
     }
 
     [HttpGet("conversations")]
     public async Task<IActionResult> Conversations()
     {
         var me = Me;
-
         var partnerIds = await db.ChatMessages
             .Where(m => m.SenderId == me || m.RecipientId == me)
             .Select(m => m.SenderId == me ? m.RecipientId : m.SenderId)
@@ -81,7 +87,6 @@ public class ChatController(AppDbContext db) : ControllerBase
         {
             var latest = await db.ChatMessages
                 .Include(m => m.Sender)
-                .Include(m => m.Recipient)
                 .Where(m =>
                     (m.SenderId == me && m.RecipientId == pid) ||
                     (m.SenderId == pid && m.RecipientId == me))
@@ -98,6 +103,7 @@ public class ChatController(AppDbContext db) : ControllerBase
                 partnerId          = partner.Id,
                 partnerUsername    = partner.Username,
                 partnerDisplayName = partner.DisplayName,
+                partnerAvatarUrl   = BuildAvatarUrl(partner.AvatarPath),
                 latestMessageId    = latest.Id,
                 latestCiphertext   = latest.Ciphertext,
                 latestIv           = latest.Iv,

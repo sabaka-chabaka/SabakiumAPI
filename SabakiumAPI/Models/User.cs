@@ -10,4 +10,5 @@ public class User
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public ICollection<Post> Posts { get; set; } = [];
     public ICollection<PostLike> PostLikes { get; set; } = [];
+    public ICollection<Comment> Comments { get; set; } = [];
 }

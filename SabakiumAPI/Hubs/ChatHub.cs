@@ -66,7 +66,8 @@ public class ChatHub(AppDbContext db) : Hub
     public override async Task OnConnectedAsync()
     {
         var userId = int.Parse(Context.User!.FindFirstValue(ClaimTypes.NameIdentifier)!);
-        UserConnections.Add(userId, Context.ConnectionId);
+        var user = await db.Users.FindAsync(userId)!;
+        UserConnections.Add(userId, Context.ConnectionId, user!.DisplayName);
         await Clients.Others.SendAsync("UserOnline", userId);
         await base.OnConnectedAsync();
     }
@@ -91,6 +92,7 @@ public class ChatHub(AppDbContext db) : Hub
 public static class UserConnections
 {
     private static readonly Dictionary<int, string> _map = new();
+    private static readonly Dictionary<int, string> _names = new();
     private static readonly Lock _lock = new();
 
     public static void Add(int userId, string connId)
@@ -106,5 +108,15 @@ public static class UserConnections
     public static string? Get(int userId)
     {
         lock (_lock) return _map.TryGetValue(userId, out var c) ? c : null;
+    }
+    
+    public static void Add(int userId, string connId, string displayName = "")
+    {
+        lock (_lock) { _map[userId] = connId; _names[userId] = displayName; }
+    }
+
+    public static string GetName(int userId)
+    {
+        lock (_lock) { return _names.TryGetValue(userId, out var n) ? n : ""; }
     }
 }

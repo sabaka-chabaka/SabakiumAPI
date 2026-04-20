@@ -45,7 +45,7 @@ builder.Services.AddControllers();
 builder.Services.AddSignalR();
 
 builder.Services.AddCors(opt => opt.AddDefaultPolicy(p =>
-    p.WithOrigins("http://localhost:5173")
+    p.WithOrigins("http://91.186.199.240:5173")
      .AllowAnyHeader()
      .AllowAnyMethod()
      .AllowCredentials()));
